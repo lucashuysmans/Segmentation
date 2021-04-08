@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,6 +12,7 @@ def train_regulariser(
     bad_dataloader,
     epochs=20,
     lr=0.001,
+    epoch_decay = 0,
     mu=1,
     binary=True,
     flip=False,
@@ -35,6 +37,9 @@ def train_regulariser(
 
     NN.to(device)
     optimiser = optim.Adam(NN.parameters(), lr = lr)
+    lr_lambda = lambda epoch : math.exp( - epoch_decay * epoch)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimiser, lr_lambda, last_epoch = -1, verbose = False)
+    
 
     for j in range(epochs):
         assert len(good_dataloader) == len(bad_dataloader)
@@ -118,7 +123,7 @@ def train_regulariser(
             # similarly scaled above
             loss = wasserstein_loss + mu * gradient_loss  # [1]
             assert loss.isnan().sum() == 0
-            print("Wasserstein loss: {:.2f}\t Gradient Loss: {:.2f}\t Min Groundtruth: {:.2f}\t Max Chan-Vese: {:.2f}".format(wasserstein_loss.item(), gradient_loss.item(), groundtruth_out.min().item(), chanvese_out.max().item()))
+            print("Wasserstein loss: {:.2f}\t Gradient Loss: {:.2f}\t Max Groundtruth: {:.2f}\t Min Chan-Vese: {:.2f}".format(wasserstein_loss.item(), gradient_loss.item(), groundtruth_out.max().item(), chanvese_out.min().item()))
 
             # backprop step
             # no need to zero the gradients of the intermediate point, since it
@@ -128,6 +133,8 @@ def train_regulariser(
             optimiser.step()
 
             assert NN.conv1.weight.isnan().sum() == 0
+        
+        scheduler.step()
 
         # print the average 'distance' the neural network has learnt between
         # groundtruth and chanvese images. Also print the max value on
